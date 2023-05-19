@@ -1,0 +1,9 @@
+*.o
+test
+.dep
+.knit
+test1
+test2
+test3
+example
+*.tar.gz
