@@ -180,6 +180,7 @@ bool thread_init(void) {
     t->ctx.x87 = 0x037F;
 
     // running = scheduler;
+    
     running = t;
     
     return true;
