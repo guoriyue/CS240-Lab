@@ -59,11 +59,12 @@ static void check_spawn(void) {
 
 void worker(void* arg) {
     printf("worker: switch to worker\n");
-    (void) arg;
+    // (void) arg;
 
     ++counter;
-    assert(thread_yield());
     printf("worker: thread_yield 1\n");
+    assert(thread_yield());
+    printf("worker: thread_yield before 2\n");
     ++counter;
     thread_yield();
     printf("worker: thread_yield 2\n");
@@ -73,17 +74,20 @@ void worker(void* arg) {
 
 static void check_yield(void) {
     assert(!thread_yield());
-    printf("check_yield: yield\n");
+    // printf("check_yield: yield\n");
     thread_spawn(worker, NULL);
-    printf("check_yield: thread_spawn\n");
+    // printf("check_yield: thread_spawn\n");
     assert(counter == 1);
-    printf("check_yield: counter == 1\n");
+    // printf("check_yield: counter == 1\n");
+    printf("check_yield: before thread_wait\n");
+    
     thread_wait();
+    
     printf("check_yield: thread_wait\n");
     assert(counter == 2);
     printf("check_yield: counter == 2\n");
     assert(!thread_yield());
-    printf("check_yield: thread_yield\n");
+    printf("check_yield: thread_end\n");
 }
 
 int main(void) {
