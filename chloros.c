@@ -14,9 +14,7 @@ static struct thread* runq_back;
 // Push a thread onto the front of the run queue.
 static void runq_push_front(struct thread* n) {
     n->next = runq_front;
-    printf("inside lib runq_push_front: n->next\n");
     n->prev = NULL;
-    printf("inside lib runq_push_front: n->prev\n");
     if (runq_front)
         runq_front->prev = n;
     else
@@ -82,63 +80,33 @@ static void schedule(void* _) {
     // 'running' might be the initial thread, which should first be put back on
     // the run queue before the main scheduler loop begins.
     
-    printf("inside lib schedule: start scheduler\n");
-    // if (scheduler->state == STATE_RUNNABLE) {
-    //     runq_push_back(running);
-    // }
 
     
     if (running->stack == NULL && initialized == false) {
         // when the scheduler first starts up, need to push the initial thread
-        // printf("inside lib schedule: init thread scheduler, begin pushing\n");
         initialized = true;
         runq_push_back(running);
     }
 
-    // printf("inside lib schedule: not pushing anything\n");
 
     while (runq_front != NULL) {
         struct thread* next_thread = runq_front;
         runq_remove(next_thread);
-        printf("inside lib schedule: running->id = %lu\n", running->id);
-        printf("inside lib schedule: next_thread->id = %lu\n", next_thread->id);
-        printf("inside lib schedule: scheduler->id = %lu\n", scheduler->id);
-
-        // schedule: next_thread->id = 1
-        // schedule: scheduler->id = 0
-        // schedule: running->id = 1
-
-        // struct thread* previous_thread = running;
+        
         running = next_thread;
         // but the real running thread is scheduler
 
-        printf("inside lib before ctxswitch in schedult: next_thread\n");
         ctxswitch(&scheduler->ctx, &running->ctx);
-        // ctxswitch(&scheduler->ctx, &next_thread->ctx);
 
 
-        // machine store in first
+        // ctxswitch, machine store in first
         // second load from the context into machine context
         
-        // ctxswitch(&previous_thread->ctx, &next_thread->ctx);
-        printf("inside lib ctxswitch in schedult: next_thread\n");
-
-        printf("inside lib return from ctxswitch schedule: running->id = %lu\n", running->id);
-        printf("inside lib return from ctxswitch schedule: next_thread->id = %lu\n", next_thread->id);
-        printf("inside lib return from ctxswitch schedule: scheduler->id = %lu\n", scheduler->id);
-
-
         if (next_thread->state == STATE_EXITED) {
             free(next_thread->stack);
             free(next_thread);
         } else {
             runq_push_back(next_thread);
-            // if (previous_thread->stack == NULL && initialized == true) {
-            //     // continue
-            // }
-            // else {
-            //     runq_push_back(previous_thread);
-            // }
         }
     }
 }
@@ -163,22 +131,28 @@ static struct thread* thread_new(threadfn_t fn, void* arg) {
     t->ctx.x87 = 0x037F;
     t->stack = (uint8_t*) malloc(STACK_SIZE);
 
-    uint64_t stack_top = (uint64_t)(t->stack + STACK_SIZE);
-    // uint64_t arg_addr = stack_top - sizeof(void*);
-    // uint64_t fn_addr = arg_addr - sizeof(void*);
-    // *((void**) arg_addr) = arg;
-    // *((threadfn_t*) fn_addr) = fn;
-    // t->ctx.rsp = fn_addr;
 
-    // 16 alignment?
-    uint64_t fn_addr = stack_top - sizeof(threadfn_t*);
-    uint64_t arg_addr = fn_addr - sizeof(void**);
+
+    uint64_t stack_top = (uint64_t)(t->stack + STACK_SIZE) - 0x8;
+    
+    uint64_t arg_addr = stack_top - sizeof(void**);
+    uint64_t fn_addr = arg_addr - sizeof(threadfn_t*);
+    uint64_t ts_addr = fn_addr - sizeof(void(*)());
+
+
     *(void**) arg_addr = arg;
     *(threadfn_t*) fn_addr = fn;
-    t->ctx.rsp = fn_addr;
+    *(void(**)()) ts_addr = &thread_start;
 
-    // rbp base pointer, doesn't need to point to anything, reserved for compiler debug
-    
+    t->ctx.rsp = ts_addr;
+
+
+
+    // printf("inside lib thread_new: stack_top = %lu\n", stack_top);
+    // printf("inside lib thread_new: ts_addr = %lu\n", ts_addr);
+
+    // printf("inside lib thread_new: arg_addr = %lu\n", arg_addr);
+    // printf("inside lib thread_new: fn_addr = %lu\n", fn_addr);
 
     return t;
 
@@ -197,7 +171,6 @@ bool thread_init(void) {
     // want to store the newly allocated scheduler in 'scheduler'.
     
     scheduler = thread_new(schedule, NULL);
-    // printf("inside lib thread_init: thread_new after scheduler\n");
 
     // FIXME: register the initial thread (the currently executing context) as
     // a thread. It just needs a thread object but doesn't need a stack or any
@@ -212,9 +185,6 @@ bool thread_init(void) {
     t->state = STATE_RUNNABLE;
     t->ctx.mxcsr = 0x1F80;
     t->ctx.x87 = 0x037F;
-    
-
-    // running = scheduler;
 
     running = t;
 
@@ -228,65 +198,31 @@ bool thread_init(void) {
 bool thread_spawn(threadfn_t fn, void* arg) {
     // FIXME
     struct thread* t = thread_new(fn, arg);
-    // printf("inside lib thread_spawn: thread_new\n");
     runq_push_front(t);
-    // printf("inside lib thread_spawn: runq_push_front\n");
     ctxswitch(&running->ctx, &scheduler->ctx);
-    // printf("inside lib thread_spawn: ctxswitch\n");
     return true;
 }
 
 // Wait until there are no more other threads.
 void thread_wait(void) {
-    printf("inside lib thread_wait begin\n");
-    printf("inside lib thread_wait: running->id = %lu\n", running->id);
-    while (thread_yield()) {
-        printf("inside lib thread_wait continuing yield\n");
-    }
+    while (thread_yield()) {}
 }
 
 // Yield the currently executing thread. Returns true if it yielded to some
 // other thread, and false if there were no other threads to yield to. If
 // there are other threads, this should yield to the scheduler.
 bool thread_yield(void) {
-    printf("******* 1\n");
     assert(running != NULL);
-    // printf("inside lib thread_yield: assert running\n");
     // FIXME: if there are no threads in the run queue, return false. Otherwise
     // switch to the scheduler so that we can run one of them.
-    printf("******* 2\n");
-    // printf("inside lib thread_yield begin\n");
     if (runq_front == NULL) {
-        printf("******* 3\n");
         return false;
     }
-    printf("******* 4\n");
-    // printf("inside lib thread_yield: assert runq_front\n");
-    // printf("inside lib thread_yield: runq_front->id = %lu\n", runq_front->id);
-    printf("inside lib thread_yield: running->id = %lu\n", running->id);
-    printf("inside lib thread_yield: scheduler->id = %lu\n", scheduler->id);
-    // struct thread* yield_to_thread = runq_front;
-    // runq_remove(yield_to_thread);
 
 
     
     ctxswitch(&running->ctx, &scheduler->ctx);
 
-    printf("inside lib thread_yield: finish ctx switch to scheduler\n");
-
-    // struct thread* executing_thread = running;
-    // running = yield_to_thread;
-
-    // ctxswitch(&executing_thread->ctx, &yield_to_thread->ctx);
-    // printf("inside lib thread_yield: assert finish ctx switch\n");
-
-    // if (executing_thread->state == STATE_EXITED) {
-    //     free(executing_thread->stack);
-    //     free(executing_thread);
-    // } else {
-    //     runq_push_back(executing_thread);
-    // }
-    // printf("inside lib thread_yield: return from scheduler ctxswitch\n");
     return true;
 }
 
@@ -295,13 +231,7 @@ bool thread_yield(void) {
 // completes (to cause the thread to exit).
 void thread_entry(threadfn_t fn, void* arg) {
 
-    printf("inside lib thread_entry: fn(arg)\n");
     fn(arg);
-    printf("inside lib thread_entry: fn(arg); in thread_entry complete\n");
     running->state = STATE_EXITED;
-    // printf("inside lib thread_entry: running state\n");
     thread_yield();
-    // printf("inside lib thread_entry: thread_yield\n");
-    // this should never happen
-    // assert(!"exited thread resumed");
 }

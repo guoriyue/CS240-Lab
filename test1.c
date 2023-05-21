@@ -58,47 +58,29 @@ static void check_spawn(void) {
 }
 
 void worker(void* arg) {
-    printf("worker: switch to worker\n");
-    // (void) arg;
+    (void) arg;
 
     ++counter;
-    printf("worker: thread_yield 1\n");
     assert(thread_yield());
-    printf("worker: thread_yield before 2\n");
     ++counter;
     thread_yield();
-    printf("worker: thread_yield 2\n");
     thread_yield();
-    printf("worker: thread_yield 3\n");
 }
 
 static void check_yield(void) {
     assert(!thread_yield());
-    // printf("check_yield: yield\n");
     thread_spawn(worker, NULL);
-    // printf("check_yield: thread_spawn\n");
     assert(counter == 1);
-    // printf("check_yield: counter == 1\n");
-    printf("check_yield: before thread_wait\n");
-    
     thread_wait();
-    
-    printf("check_yield: thread_wait\n");
     assert(counter == 2);
-    printf("check_yield: counter == 2\n");
     assert(!thread_yield());
-    printf("check_yield: thread_end\n");
 }
 
 int main(void) {
     thread_init();
-    printf("threads: init\n");
     check_yield();
-    printf("threads: yield\n");
     check_spawn();
-    printf("threads: spawn\n");
     check_stack_align();
-    printf("threads: stack_align\n");
     check_yield_loop();
     printf("threads: pass\n");
     return 0;
